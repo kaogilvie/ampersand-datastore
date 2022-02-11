@@ -11,6 +11,6 @@ setup(name='ampersand_datastore',
       ),
       version=__version__,
       install_requires=[
-        "psycopg2==2.9.3"
+        "psycopg2-binary==2.9.3"
       ]
 )
