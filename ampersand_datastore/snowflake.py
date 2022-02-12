@@ -6,28 +6,6 @@ def import_snowflake():
     import snowflake.connector
     return snowflake.connector
 
-# dev only
-# creds = {
-#     'user': os.environ['SNOWFLAKE_USER'],
-#     'password': os.environ['SNOWFLAKE_PASSWORD'],
-#     'account': os.environ['SNOWFLAKE_ACCOUNT'],
-#     'database': 'COACH_KATIE',
-#     'warehouse': 'COMPUTE_WH',
-#     'schema': 'MT'
-# }
-
-# sno = Snowflake()
-# sno.get_cursor(creds)
-#
-# from marianatek.admin import AdminClient
-# admin = AdminClient()
-# admin.model_columns = {'test': 'varchar'}
-# admin.data = [{'test': 'yesgirl'}]
-#
-# sno.stage_object(admin, 'test')
-# sno.create_object('test_table', 'MT', '')
-
-
 class Snowflake(Database):
     '''Connection to a particular Snowflake instance.'''
     def __init__(self):
@@ -35,12 +13,31 @@ class Snowflake(Database):
         super().__init__()
 
     def check_safe(self, string):
+        '''
+        Snowflake doesn't implement anything like psycopg2's SQL safe types,
+        so you have to roll your own. This is my first stab at it, and I'm
+        sure that it's not good enough yet.
+        '''
+        if type(string) != str:
+            return string
         if ';' in string:
             self.logger.warning(f"Removing suspicious semicolon from {string} before insertion.")
             string = string.replace(';', '')
         return string
 
     def open_connection(self, creds: dict):
+        ''''
+        Open connection to snowflake with the following parameters in creds:
+
+        :user: username
+        :password: see name of parameter
+        :account: the part of the snowflake URL before .snowflakecomputing.com
+        :database: the target database name
+        :warehouse: don't use too many credits, hny
+
+        Schema is not set in the connection string to allow for maximum flexibility
+        in SQL operations down the line.
+        '''
         if not set(['user', 'password', 'account', 'database', 'warehouse']).issubset(set(creds.keys())):
             raise AttributeError("Required basic params for Snowflake connection not included in creds dict (user, password, account).")
         self.cxn = self.snow.connect(**creds)
@@ -61,6 +58,7 @@ class Snowflake(Database):
         self.logger.info("Cursor retrieved.")
 
     def create_object(self, target_table: str, schema: str, primary_key_list: list):
+        '''Create table corresponding to object in target database.'''
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
@@ -73,7 +71,7 @@ class Snowflake(Database):
         ])
 
         if len(primary_key_list) > 0:
-            columns = f"{columns}, PRIMARY KEY ({pk_list})".format(
+            columns = "{columns}, PRIMARY KEY ({pk_list})".format(
                 pk_list = (','.join([
                         self.check_safe(pk) for pk in primary_key_list
                     ])),
@@ -90,47 +88,106 @@ class Snowflake(Database):
         self.logger.info("Created.")
 
     def drop_object(self, target_table, schema):
+        '''Drop table corresponding to object in target database.'''
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
-        drop_table = self.psycopg2.sql.SQL("DROP TABLE {schema}.{target_table}").format(schema=self.psycopg2.sql.Identifier(schema),target_table=self.psycopg2.sql.Identifier(target_table))
+        drop_table = "DROP TABLE {schema}.{target_table}".format(schema=self.check_safe(schema),target_table=self.check_safe(target_table))
         self.cursor.execute(drop_table)
         self.cxn.commit()
         self.logger.info(f"Table {schema}.{target_table} dropped.")
 
     def upsert_object(self, target_table, schema, primary_key_list):
         '''Convenience wrapper to perform checks, drops and upserts as needed.'''
+        try:
+            self.create_object(target_table, schema, primary_key_list)
+
+            if len(primary_key_list) == 0:
+                self.logger.error("No primary keys declared for table -- you cannot upsert without at least one. Appending is still an option.")
+                raise ValueError
+
+            ## LOAD TEMP TABLE
+            self.logger.info("Creating temp table")
+            self.append_object(f"{target_table}_temp", schema, primary_key_list)
+
+            ## MERGE INTO instead of ON CONFLICT
+            upsert_sql = """MERGE INTO {schema}.{target_table} as a
+            USING {schema}.{target_table}_temp as b
+            ON {primary_key_expression}
+            WHEN MATCHED THEN UPDATE SET {update_cols}
+            WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})
+            """.format(
+                        schema = self.check_safe(schema),
+                        target_table = self.check_safe(target_table),
+                        col_string = ','.join([
+                            self.check_safe(field) for field in self.target.model_columns.keys()
+                        ]),
+                        primary_key_expression = ','.join([
+                            f"a.{self.check_safe(pk)} = b.{self.check_safe(pk)}" for pk in primary_key_list
+                        ]),
+                        update_cols = ','.join([
+                            "a.{field} = b.{field}".format(field = self.check_safe(field)) for field in self.target.model_columns if field not in primary_key_list
+                        ]),
+                        insert_cols = ",".join([
+                            field for field in self.target.model_columns
+                        ]),
+                        insert_vals = ",".join([
+                            f"b.{field}" for field in self.target.model_columns
+                        ])
+                       )
+
+            # self.logger.info("Upserting {len}") # length of rows to upsert
+            self.cursor.execute(upsert_sql)
+            self.cxn.commit()
+            self.logger.info("Committed upsert.")
+        except self.snow.ProgrammingError:
+            self.logger.exception("Something went wrong with the upsert.")
+            self.cxn.rollback()
+        finally:
+            self.logger.info("Cleaning up temp table...")
+            self.cursor.execute(f"DROP TABLE IF EXISTS {schema}.{target_table}_temp")
+            self.cxn.commit()
+
+    def append_object(self, target_table, schema, primary_key_list):
+        self.logger.info("Creating table if does not exist")
         self.create_object(target_table, schema, primary_key_list)
 
-        upsert_sql = self.psycopg2.sql.SQL("""INSERT INTO {schema}.{target_table}
+        val_string = ''
+        for row in self.target.formatted_data:
+            new_row = "("
+            for col, typ in self.target.model_columns.items():
+                if typ != 'varchar':
+                    if new_row == "(":
+                        new_row = f"{new_row}{self.check_safe(row[col])}"
+                    else:
+                        new_row = ','.join([new_row, str(self.check_safe(row[col]))])
+                else:
+                    if new_row == "(":
+                        new_row = f"{new_row}'{self.check_safe(row[col])}'"
+                    else:
+                        new_row = ','.join([new_row, f"'{self.check_safe(row[col])}'"])
+            new_row = f"{new_row})"
+            if val_string == '':
+                val_string = new_row
+            else:
+                val_string = ','.join([val_string, new_row])
+        self.logger.debug(f"Values string: {val_string}")
+
+        insert_sql = """INSERT INTO {schema}.{target_table}
         ({col_string})
         VALUES {val_string}
-        ON CONFLICT ({primary_keys})
-        DO
-        UPDATE SET {update_cols}
-        """).format(
-                    schema = self.psycopg2.sql.Identifier(schema),
-                    target_table = self.psycopg2.sql.Identifier(target_table),
-                    col_string = self.psycopg2.sql.SQL(',').join([
-                        self.psycopg2.sql.Identifier(field) for field in self.target.model_columns.keys()
+        """.format(
+                    schema = self.check_safe(schema),
+                    target_table = self.check_safe(target_table),
+                    col_string = ','.join([
+                        self.check_safe(field) for field in self.target.model_columns.keys()
                     ]),
-                    val_string = self.psycopg2.sql.Placeholder(),
-                    primary_keys = self.psycopg2.sql.SQL(',').join([
-                        self.psycopg2.sql.Identifier(pk) for pk in primary_key_list
-                    ]),
-                    update_cols = self.psycopg2.sql.SQL(',').join([
-                        (self.psycopg2.sql.SQL("{field} = EXCLUDED.{field}").format(field = self.psycopg2.sql.Identifier(field))) for field in self.target.model_columns if field not in primary_key_list
-                    ])
-                   )
-
-        self.logger.info(f"Using this SQL to upsert: {upsert_sql.as_string(self.cursor)}")
-        self.execute_values(
-            self.cursor,
-            upsert_sql,
-            self.target.formatted_data,
-            self.psycopg2.sql.SQL("({arglist})").format(arglist=self.psycopg2.sql.SQL(',').join([self.psycopg2.sql.Placeholder(col) for col in self.target.model_columns.keys()]))
-        )
+                    val_string = val_string
+                )
+        self.logger.info(f"Inserting {len(self.target.formatted_data)} rows into {schema}.{target_table}...")
+        self.cursor.execute(insert_sql)
         self.cxn.commit()
+        self.logger.info("Committed insert.")
 
     def recreate_object(self, target_table, schema, primary_key_list):
         '''Convenience wrapper for drop and create methods.'''

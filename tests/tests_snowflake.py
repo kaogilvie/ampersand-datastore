@@ -1,0 +1,24 @@
+# dev only
+creds = {
+    'user': os.environ['SNOWFLAKE_USER'],
+    'password': os.environ['SNOWFLAKE_PASSWORD'],
+    'account': os.environ['SNOWFLAKE_ACCOUNT'],
+    'database': 'COACH_KATIE',
+    'warehouse': 'COMPUTE_WH',
+    'schema': 'MT'
+}
+
+sno = Snowflake()
+sno.get_cursor(creds)
+
+from marianatek.admin import AdminClient
+admin = AdminClient()
+admin.model_columns = {'test': 'varchar', 'prikey': 'int'}
+admin.data = [{'test': 'yesgirl', 'prikey': 1}]
+
+sno.stage_object(admin, 'test')
+sno.create_object('test_table', 'MT', '')
+# sno.drop_object('test_table', 'MT')
+# sno.append_object('test_table', 'MT', '')
+# sno.recreate_object('test_table', 'MT', ['prikey'])
+sno.upsert_object('test_table', 'MT', ['prikey'])
