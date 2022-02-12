@@ -6,9 +6,7 @@ setup(name='ampersand_datastore',
       author='Kyle Ogilvie',
       author_email='kyle@kyleogilve.com',
       url='https://www.kyleogilvie.com/',
-      packages=find_packages(
-        where='ampersand_datastore'
-      ),
+      packages=find_packages(),
       version=__version__,
       install_requires=[
         "psycopg2-binary==2.9.3"
