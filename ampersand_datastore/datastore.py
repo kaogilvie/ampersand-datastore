@@ -6,8 +6,8 @@ import json
 class Database(object):
     '''Generic database connector for any interface that implements DB-API standards.'''
     def __init__(self):
+        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-
         # override to convert generic API types to specific database types
         self.type_conversion_dict = {}
 
