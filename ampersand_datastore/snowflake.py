@@ -65,9 +65,12 @@ class Snowflake(Database):
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
-        # override datatypes here if needed
         if len(self.type_conversion_dict) > 0:
-            raise NotImplementedError("Type conversion not yet implemented for Snowflake!")
+            for col, type in self.target.model_columns.items():
+                converted_type = self.type_conversion_dict.get(type, None)
+                if converted_type is not None:
+                    self.logger.info(f"Debugging: converting {type} to {new_type}")
+                    self.target.model_columns[col] = converted_type
 
         columns = ",".join([
             "{col} {type}".format(col = self.check_safe(col), type = self.check_safe(type)) for col, type in self.target.model_columns.items()
