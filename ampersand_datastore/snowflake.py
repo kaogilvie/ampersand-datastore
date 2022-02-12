@@ -166,7 +166,7 @@ class Snowflake(Database):
                 # handle type idiosyncrasies
                 if typ == 'varchar':
                     if safe_col is None:
-                        safe_col = 'None'
+                        safe_col = 'NULL'
                     else:
                         if safe_col[0] != "'":
                             safe_col = f"'{safe_col}"
@@ -176,10 +176,18 @@ class Snowflake(Database):
                 # this makes exclusively str arrays
                 if typ == 'ARRAY':
                     safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
-                    safe_col = f"'{safe_col}'"
+                    if safe_col is None:
+                        safe_col = 'NULL'
+                    else:
+                        safe_col = f"'{safe_col}'"
                 if typ == 'timestamp':
-                    safe_col = f"'{safe_col}'"
+                    if safe_col is None:
+                        safe_col = 'NULL'
+                    else:
+                        safe_col = f"'{safe_col}'"
                 # format the insert vals statement
+                if safe_col is None:
+                    safe_col = 'NULL'
                 if new_row == "(":
                     new_row = f"{new_row}{safe_col}"
                 else:
@@ -190,7 +198,6 @@ class Snowflake(Database):
             else:
                 val_string = ','.join([val_string, new_row])
         self.logger.debug(f"Values string: {val_string}")
-
 
         select_str = ''
         countah = 1
