@@ -161,17 +161,17 @@ class Snowflake(Database):
         val_string = ''
         for row in self.target.formatted_data:
             new_row = "("
+            safe_col = self.check_safe(row[col])
             for col, typ in self.target.model_columns.items():
-                if typ != 'varchar':
-                    if new_row == "(":
-                        new_row = f"{new_row}{self.check_safe(row[col])}"
-                    else:
-                        new_row = ','.join([new_row, str(self.check_safe(row[col]))])
+                if typ == 'varchar':
+                    if safe_col[0] != "'":
+                        safe_col = f"'{safe_col}"
+                    if safe_col[-1] != "'":
+                        safe_col = f"{safe_col}'"
+                if new_row == "(":
+                    new_row = f"{new_row}{safe_col}"
                 else:
-                    if new_row == "(":
-                        new_row = f"{new_row}'{self.check_safe(row[col])}'"
-                    else:
-                        new_row = ','.join([new_row, f"'{self.check_safe(row[col])}'"])
+                    new_row = ','.join([new_row, str(safe_col)])
             new_row = f"{new_row})"
             if val_string == '':
                 val_string = new_row
