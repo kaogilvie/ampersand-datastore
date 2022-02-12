@@ -167,6 +167,8 @@ class Snowflake(Database):
                 if typ == 'varchar':
                     if safe_col is None:
                         safe_col = 'NULL'
+                    if safe_col == '':
+                        safe_col = 'NULL'
                     else:
                         if safe_col[0] != "'":
                             safe_col = f"'{safe_col}"
