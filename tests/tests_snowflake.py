@@ -13,8 +13,8 @@ sno.get_cursor(creds)
 
 from marianatek.admin import AdminClient
 admin = AdminClient()
-admin.model_columns = {'test': 'text[]', 'prikey': 'int'}
-admin.data = [{'test': ['yesgirl'], 'prikey': 1}]
+admin.model_columns = {'test': 'text[]', 'prikey': 'int', 'tim': 'timestamp'}
+admin.data = [{'test': ['yesgirl'], 'prikey': 1, 'tim': '2020-09-02T11:01:07.676355Z'}]
 
 sno.stage_object(admin, 'test')
 # sno.create_object('test_table', 'MT', '')
