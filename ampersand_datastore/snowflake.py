@@ -226,7 +226,7 @@ class Snowflake(Database):
                     val_string = val_string
                 )
         self.logger.info(f"Inserting {len(self.target.formatted_data)} rows into {schema}.{target_table}...")
-        self.logger.info(f"Insert query: {insert_sql}")
+        self.logger.debug(f"Insert query: {insert_sql}")
         self.cursor.execute(insert_sql)
         self.cxn.commit()
         self.logger.info("Committed insert.")
