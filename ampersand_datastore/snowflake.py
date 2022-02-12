@@ -69,7 +69,7 @@ class Snowflake(Database):
             for col, type in self.target.model_columns.items():
                 converted_type = self.type_conversion_dict.get(type, None)
                 if converted_type is not None:
-                    self.logger.info(f"Debugging: converting {type} to {new_type}")
+                    self.logger.info(f"Debugging: converting {type} to {converted_type}")
                     self.target.model_columns[col] = converted_type
 
         columns = ",".join([
@@ -161,13 +161,20 @@ class Snowflake(Database):
         val_string = ''
         for row in self.target.formatted_data:
             new_row = "("
-            safe_col = self.check_safe(row[col])
             for col, typ in self.target.model_columns.items():
+                safe_col = self.check_safe(row[col])
+                # handle type idiosyncrasies
                 if typ == 'varchar':
                     if safe_col[0] != "'":
                         safe_col = f"'{safe_col}"
                     if safe_col[-1] != "'":
                         safe_col = f"{safe_col}'"
+                # you cannot insert a python array directly into snowflake yet
+                # this makes exclusively str arrays
+                if typ == 'ARRAY':
+                    safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
+                    safe_col = f"'{safe_col}'"
+                # format the insert vals statement
                 if new_row == "(":
                     new_row = f"{new_row}{safe_col}"
                 else:
@@ -179,15 +186,29 @@ class Snowflake(Database):
                 val_string = ','.join([val_string, new_row])
         self.logger.debug(f"Values string: {val_string}")
 
+
+        select_str = ''
+        countah = 1
+        for type in self.target.model_columns.values():
+            counter = f"${countah}"
+            if type == 'ARRAY':
+                counter = f"PARSE_JSON({counter})"
+            counter = f"{counter},"
+            select_str = f"{select_str}{counter}"
+            countah += 1
+        select_str = select_str[:-1]
+
         insert_sql = """INSERT INTO {schema}.{target_table}
         ({col_string})
-        VALUES {val_string}
+        SELECT {select_str}
+        FROM VALUES {val_string}
         """.format(
                     schema = self.check_safe(schema),
                     target_table = self.check_safe(target_table),
                     col_string = ','.join([
                         self.check_safe(field) for field in self.target.model_columns.keys()
                     ]),
+                    select_str = select_str,
                     val_string = val_string
                 )
         self.logger.info(f"Inserting {len(self.target.formatted_data)} rows into {schema}.{target_table}...")

@@ -13,12 +13,15 @@ sno.get_cursor(creds)
 
 from marianatek.admin import AdminClient
 admin = AdminClient()
-admin.model_columns = {'test': 'varchar', 'prikey': 'int'}
-admin.data = [{'test': 'yesgirl', 'prikey': 1}]
+admin.model_columns = {'test': 'text[]', 'prikey': 'int'}
+admin.data = [{'test': ['yesgirl'], 'prikey': 1}]
 
 sno.stage_object(admin, 'test')
-sno.create_object('test_table', 'MT', '')
+# sno.create_object('test_table', 'MT', '')
 # sno.drop_object('test_table', 'MT')
 # sno.append_object('test_table', 'MT', '')
-# sno.recreate_object('test_table', 'MT', ['prikey'])
+sno.recreate_object('test_table', 'MT', ['prikey'])
 sno.upsert_object('test_table', 'MT', ['prikey'])
+
+test_array = ["this", 'is', 'a', 'test', 'array']
+str(test_array)
