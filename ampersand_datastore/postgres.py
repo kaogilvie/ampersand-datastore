@@ -24,7 +24,7 @@ class Postgres(Database):
     def open_connection(self, creds: dict):
         if not set(['dbname', 'user', 'password', 'host', 'port']).issubset(set(creds.keys())):
             raise AttributeError("Required basic params for postgres connection not included in creds dict.")
-        self.cxn = psycopg2.connect(**creds)
+        self.cxn = self.psycopg2.connect(**creds)
         self.logger.info(f"Set up connection to {creds['dbname']} Postgres db successfully.")
 
     def get_cursor(self, creds, cursor_type=False):
@@ -39,8 +39,7 @@ class Postgres(Database):
             self.open_connection(creds)
 
         if cursor_type == 'dictcursor':
-            from psycopg2.extras import DictCursor
-            self.cursor = self.cxn.cursor(cursor_factory=DictCursor)
+            self.cursor = self.cxn.cursor(cursor_factory=self.dictCursor)
         else:
             self.cursor = self.cxn.cursor()
         self.logger.info("Cursor retrieved.")
