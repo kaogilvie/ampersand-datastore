@@ -165,10 +165,11 @@ class Snowflake(Database):
                 safe_col = self.check_safe(row[col])
                 # handle type idiosyncrasies
                 if typ == 'varchar':
-                    if safe_col[0] != "'":
-                        safe_col = f"'{safe_col}"
-                    if safe_col[-1] != "'":
-                        safe_col = f"{safe_col}'"
+                    if safe_col is not None:
+                        if safe_col[0] != "'":
+                            safe_col = f"'{safe_col}"
+                        if safe_col[-1] != "'":
+                            safe_col = f"{safe_col}'"
                 # you cannot insert a python array directly into snowflake yet
                 # this makes exclusively str arrays
                 if typ == 'ARRAY':
