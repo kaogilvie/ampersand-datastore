@@ -9,8 +9,11 @@ def import_snowflake():
 class Snowflake(Database):
     '''Connection to a particular Snowflake instance.'''
     def __init__(self):
-        self.snow = import_snowflake()
         super().__init__()
+        self.snow = import_snowflake()
+        self.type_conversion_dict = {
+            'text[]': 'ARRAY',
+        }
 
     def check_safe(self, string):
         '''
