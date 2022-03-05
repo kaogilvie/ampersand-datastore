@@ -1,5 +1,6 @@
 from ampersand_datastore.datastore import Database
 import os
+import json
 import logging
 
 def import_snowflake():
@@ -146,9 +147,34 @@ class Snowflake(Database):
             self.cursor.execute(upsert_sql)
             self.cxn.commit()
             self.logger.info("Committed upsert.")
-        except self.snow.ProgrammingError:
+        except self.snow.ProgrammingError as e:
             self.logger.exception("Something went wrong with the upsert.")
             self.cxn.rollback()
+            if os.environ['SLACK_MONITOR_WEBHOOK']:
+                import requests
+                error_payload = {
+                    "text": f"Something went wrong when upserting {schema}.{target_table} in Snowflake.",
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"Something went wrong when upserting {schema}.{target_table} in Snowflake."
+                            }
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"Traceback:\n```{e}```"
+                            }
+                        }
+                        ]
+                    }
+                requests.post(os.environ['SLACK_MONITOR_WEBHOOK'],
+                                data=json.dumps(error_payload),
+                                headers={'Content-Type': 'application/json'})
+
         finally:
             self.logger.info("Cleaning up temp table...")
             self.cursor.execute(f"DROP TABLE IF EXISTS {schema}.{target_table}_temp")
