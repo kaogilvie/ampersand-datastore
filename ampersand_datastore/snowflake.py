@@ -171,7 +171,7 @@ class Snowflake(Database):
                         }
                         ]
                     }
-                requests.post('https://hooks.slack.com/services/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',
+                requests.post(os.environ['SLACK_MONITOR_WEBHOOK'],
                                 data=json.dumps(error_payload),
                                 headers={'Content-Type': 'application/json'})
 
