@@ -2,7 +2,6 @@ from ampersand_datastore.datastore import Database
 import os
 import json
 import logging
-import requests
 
 def import_snowflake():
     import snowflake.connector
@@ -152,6 +151,7 @@ class Snowflake(Database):
             self.logger.exception("Something went wrong with the upsert.")
             self.cxn.rollback()
             if os.environ['SLACK_MONITOR_WEBHOOK']:
+                import requests
                 error_payload = {
                     "text": f"Something went wrong when upserting {schema}.{target_table} in Snowflake.",
                     "blocks": [
