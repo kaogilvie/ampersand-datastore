@@ -3,7 +3,8 @@ from .datastore import Database
 ## this is clumsy but its better than before
 def import_psycopg2():
     import psycopg2
-    return psycopg2
+    from psycopg2 import sql
+    return psycopg2, sql
 
 def import_dictcursor():
     from psycopg2.extras import DictCursor
@@ -16,7 +17,7 @@ def import_execute():
 class Postgres(Database):
     '''Connection to a postgres database.'''
     def __init__(self):
-        self.psycopg2 = import_psycopg2()
+        self.psycopg2, self.sql = import_psycopg2()
         self.dictCursor = import_dictcursor()
         self.execute_values = import_execute()
         super().__init__()
@@ -52,21 +53,21 @@ class Postgres(Database):
         if len(self.type_conversion_dict) > 0:
             raise NotImplementedError("Type conversion not yet implemented for Postgres!")
 
-        columns = self.psycopg2.sql.SQL("{columns}").format(
-            columns = self.psycopg2.sql.SQL(",").join([
-                    (self.psycopg2.sql.SQL("{col} {type}").format(col = self.psycopg2.sql.Identifier(col), type = self.psycopg2.sql.SQL(type))) for col, type in self.target.model_columns.items()
+        columns = self.sql.SQL("{columns}").format(
+            columns = self.sql.SQL(",").join([
+                    (self.sql.SQL("{col} {type}").format(col = self.sql.Identifier(col), type = self.sql.SQL(type))) for col, type in self.target.model_columns.items()
                 ])
             )
         if len(primary_key_list) > 0:
-            columns = self.psycopg2.sql.SQL("{columns}, PRIMARY KEY ({pk_list})").format(
+            columns = self.sql.SQL("{columns}, PRIMARY KEY ({pk_list})").format(
                 columns = columns,
-                pk_list = self.psycopg2.sql.SQL(',').join([
-                    self.psycopg2.sql.Identifier(pk) for pk in primary_key_list
+                pk_list = self.sql.SQL(',').join([
+                    self.sql.Identifier(pk) for pk in primary_key_list
                 ])
             )
-        create_if_not_exists = self.psycopg2.sql.SQL("CREATE TABLE IF NOT EXISTS {schema}.{target_table} ({columns})").format(
-            schema = self.psycopg2.sql.Identifier(schema),
-            target_table = self.psycopg2.sql.Identifier(target_table),
+        create_if_not_exists = self.sql.SQL("CREATE TABLE IF NOT EXISTS {schema}.{target_table} ({columns})").format(
+            schema = self.sql.Identifier(schema),
+            target_table = self.sql.Identifier(target_table),
             columns = columns
         )
         self.logger.info(f"Creating table using the following SQL: {create_if_not_exists.as_string(self.cursor)}")
@@ -78,7 +79,7 @@ class Postgres(Database):
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
-        drop_table = self.psycopg2.sql.SQL("DROP TABLE {schema}.{target_table}").format(schema=self.psycopg2.sql.Identifier(schema),target_table=self.psycopg2.sql.Identifier(target_table))
+        drop_table = self.sql.SQL("DROP TABLE {schema}.{target_table}").format(schema=self.sql.Identifier(schema),target_table=self.sql.Identifier(target_table))
         self.cursor.execute(drop_table)
         self.cxn.commit()
         self.logger.info(f"Table {schema}.{target_table} dropped.")
@@ -87,24 +88,24 @@ class Postgres(Database):
         '''Convenience wrapper to perform checks, drops and upserts as needed.'''
         self.create_object(target_table, schema, primary_key_list)
 
-        upsert_sql = self.psycopg2.sql.SQL("""INSERT INTO {schema}.{target_table}
+        upsert_sql = self.sql.SQL("""INSERT INTO {schema}.{target_table}
         ({col_string})
         VALUES {val_string}
         ON CONFLICT ({primary_keys})
         DO
         UPDATE SET {update_cols}
         """).format(
-                    schema = self.psycopg2.sql.Identifier(schema),
-                    target_table = self.psycopg2.sql.Identifier(target_table),
-                    col_string = self.psycopg2.sql.SQL(',').join([
-                        self.psycopg2.sql.Identifier(field) for field in self.target.model_columns.keys()
+                    schema = self.sql.Identifier(schema),
+                    target_table = self.sql.Identifier(target_table),
+                    col_string = self.sql.SQL(',').join([
+                        self.sql.Identifier(field) for field in self.target.model_columns.keys()
                     ]),
-                    val_string = self.psycopg2.sql.Placeholder(),
-                    primary_keys = self.psycopg2.sql.SQL(',').join([
-                        self.psycopg2.sql.Identifier(pk) for pk in primary_key_list
+                    val_string = self.sql.Placeholder(),
+                    primary_keys = self.sql.SQL(',').join([
+                        self.sql.Identifier(pk) for pk in primary_key_list
                     ]),
-                    update_cols = self.psycopg2.sql.SQL(',').join([
-                        (self.psycopg2.sql.SQL("{field} = EXCLUDED.{field}").format(field = self.psycopg2.sql.Identifier(field))) for field in self.target.model_columns if field not in primary_key_list
+                    update_cols = self.sql.SQL(',').join([
+                        (self.sql.SQL("{field} = EXCLUDED.{field}").format(field = self.sql.Identifier(field))) for field in self.target.model_columns if field not in primary_key_list
                     ])
                    )
 
@@ -113,7 +114,7 @@ class Postgres(Database):
             self.cursor,
             upsert_sql,
             self.target.formatted_data,
-            self.psycopg2.sql.SQL("({arglist})").format(arglist=self.psycopg2.sql.SQL(',').join([self.psycopg2.sql.Placeholder(col) for col in self.target.model_columns.keys()]))
+            self.sql.SQL("({arglist})").format(arglist=self.sql.SQL(',').join([self.sql.Placeholder(col) for col in self.target.model_columns.keys()]))
         )
         self.cxn.commit()
 

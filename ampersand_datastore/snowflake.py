@@ -149,7 +149,6 @@ class Snowflake(Database):
             self.logger.info("Committed upsert.")
         except self.snow.ProgrammingError as e:
             self.logger.exception("Something went wrong with the upsert.")
-            self.cxn.rollback()
             if os.environ['SLACK_MONITOR_WEBHOOK']:
                 import requests
                 error_payload = {
@@ -174,6 +173,7 @@ class Snowflake(Database):
                 requests.post(os.environ['SLACK_MONITOR_WEBHOOK'],
                                 data=json.dumps(error_payload),
                                 headers={'Content-Type': 'application/json'})
+            self.cxn.rollback()
 
         finally:
             self.logger.info("Cleaning up temp table...")
@@ -200,22 +200,33 @@ class Snowflake(Database):
                             safe_col = f"'{safe_col}"
                         if safe_col[-1] != "'":
                             safe_col = f"{safe_col}'"
+
                 # you cannot insert a python array directly into snowflake yet
                 # this makes exclusively str arrays
                 if typ == 'ARRAY':
                     safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
                     if safe_col is None:
                         safe_col = 'NULL'
+                    elif safe_col == 'None':
+                        safe_col = 'NULL'
                     else:
                         safe_col = f"'{safe_col}'"
+
                 if typ == 'timestamp':
                     if safe_col is None:
                         safe_col = 'NULL'
                     else:
                         safe_col = f"'{safe_col}'"
-                # format the insert vals statement
+
+                if typ == 'date':
+                    if safe_col is None:
+                        safe_col = 'NULL'
+                    else:
+                        safe_col = f"'{safe_col}'"
+
                 if safe_col is None:
                     safe_col = 'NULL'
+                # format the insert vals statement
                 if new_row == "(":
                     new_row = f"{new_row}{safe_col}"
                 else:
@@ -235,6 +246,8 @@ class Snowflake(Database):
                 counter = f"PARSE_JSON({counter})"
             if type == 'timestamp':
                 counter = f"TO_TIMESTAMP({counter})"
+            if type == 'date':
+                counter = f"TO_DATE({counter})"
             counter = f"{counter},"
             select_str = f"{select_str}{counter}"
             countah += 1
