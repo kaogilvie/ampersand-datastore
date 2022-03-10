@@ -19,13 +19,25 @@ class Database(object):
 
         self.logger.info(f"Loading in {target} instance for interface with {target_table}.")
 
-        self.logger.info(f"Trimming out columns not in {target}.model_columns. Starting with {len(target.data[0].keys())} columns...")
         target.formatted_data = []
-        for entry in target.data:
-            formatted_dict = {col: entry[col] for col in list(target.model_columns.keys()) if col in entry}
-            target.formatted_data.append(formatted_dict)
-        self.logger.info(f"""Ended with {len(target.formatted_data[0].keys())} columns. Trimmed the following columns out:
-                            {set(target.data[0].keys()) - set(target.formatted_data[0].keys())}""")
+        if type(target.data) != list:
+            self.logger.info("target.data is not a list; attempting dataframe parse")
+            self.logger.info(f"Trimming out columns not in {target}.model_columns. Starting with {len(target.data.columns)} columns...")
+            try:
+                for index, entry in target.data.iterrows():
+                    formatted_dict = {col: entry[col] for col in list(target.model_columns.keys()) if col in entry}
+                    target.formatted_data.append(formatted_dict)
+                self.logger.info(f"""Ended with {len(target.formatted_data[0].keys())} columns. Trimmed the following columns out:
+                            {set(target.data.columns) - set(target.formatted_data[0].keys())}""")
+            except:
+                self.logger.exception("Dataframe parse failed.")
+        else:
+            self.logger.info(f"Trimming out columns not in {target}.model_columns. Starting with {len(target.data[0].keys())} columns...")
+            for entry in target.data:
+                formatted_dict = {col: entry[col] for col in list(target.model_columns.keys()) if col in entry}
+                target.formatted_data.append(formatted_dict)
+            self.logger.info(f"""Ended with {len(target.formatted_data[0].keys())} columns. Trimmed the following columns out:
+                        {set(target.data[0].keys()) - set(target.formatted_data[0].keys())}""")
 
         self.target = target
 
