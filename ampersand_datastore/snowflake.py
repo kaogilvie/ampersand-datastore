@@ -187,100 +187,103 @@ class Snowflake(Database):
         val_string = ''
 
         chunked_data = []
-        max_chunk_size = 10000
+        max_chunk_size = 5000
 
         if len(self.target.formatted_data) > max_chunk_size:
             for i in range(0, len(self.target.formatted_data), max_chunk_size):
                 chunked_data.append(self.target.formatted_data[i:i+max_chunk_size])
         else:
-            chunked_data = self.target.formatted_data
+            chunked_data = [self.target.formatted_data]
 
-        for row in chunked_data:
-            new_row = "("
-            for col, typ in self.target.model_columns.items():
-                safe_col = self.check_safe(row[col])
-                # handle type idiosyncrasies
-                if typ == 'varchar':
+        for chunk in chunked_data:
+            val_string = ''
+            for row in chunk:
+                self.logger.info(row)
+                new_row = "("
+                for col, typ in self.target.model_columns.items():
+                    safe_col = self.check_safe(row[col])
+                    # handle type idiosyncrasies
+                    if typ == 'varchar':
+                        if safe_col is None:
+                            safe_col = 'NULL'
+                        if safe_col == '':
+                            safe_col = 'NULL'
+                        else:
+                            if safe_col[0] != "'":
+                                safe_col = f"'{safe_col}"
+                            if safe_col[-1] != "'":
+                                safe_col = f"{safe_col}'"
+
+                    # you cannot insert a python array directly into snowflake yet
+                    # this makes exclusively str arrays
+                    if typ == 'ARRAY':
+                        safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
+                        if safe_col is None:
+                            safe_col = 'NULL'
+                        elif safe_col == 'None':
+                            safe_col = 'NULL'
+                        else:
+                            safe_col = f"'{safe_col}'"
+
+                    if typ == 'timestamp':
+                        if safe_col is None:
+                            safe_col = 'NULL'
+                        else:
+                            safe_col = f"'{safe_col}'"
+
+                    if typ == 'date':
+                        if safe_col is None:
+                            safe_col = 'NULL'
+                        else:
+                            safe_col = f"'{safe_col}'"
+
                     if safe_col is None:
                         safe_col = 'NULL'
-                    if safe_col == '':
-                        safe_col = 'NULL'
+                    # format the insert vals statement
+                    if new_row == "(":
+                        new_row = f"{new_row}{safe_col}"
                     else:
-                        if safe_col[0] != "'":
-                            safe_col = f"'{safe_col}"
-                        if safe_col[-1] != "'":
-                            safe_col = f"{safe_col}'"
-
-                # you cannot insert a python array directly into snowflake yet
-                # this makes exclusively str arrays
-                if typ == 'ARRAY':
-                    safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
-                    if safe_col is None:
-                        safe_col = 'NULL'
-                    elif safe_col == 'None':
-                        safe_col = 'NULL'
-                    else:
-                        safe_col = f"'{safe_col}'"
-
-                if typ == 'timestamp':
-                    if safe_col is None:
-                        safe_col = 'NULL'
-                    else:
-                        safe_col = f"'{safe_col}'"
-
-                if typ == 'date':
-                    if safe_col is None:
-                        safe_col = 'NULL'
-                    else:
-                        safe_col = f"'{safe_col}'"
-
-                if safe_col is None:
-                    safe_col = 'NULL'
-                # format the insert vals statement
-                if new_row == "(":
-                    new_row = f"{new_row}{safe_col}"
+                        new_row = ','.join([new_row, str(safe_col)])
+                new_row = f"{new_row})"
+                if val_string == '':
+                    val_string = new_row
                 else:
-                    new_row = ','.join([new_row, str(safe_col)])
-            new_row = f"{new_row})"
-            if val_string == '':
-                val_string = new_row
-            else:
-                val_string = ','.join([val_string, new_row])
-        self.logger.debug(f"Values string: {val_string}")
+                    val_string = ','.join([val_string, new_row])
+            # self.logger.debug(f"Values string: {val_string}")
 
-        select_str = ''
-        countah = 1
-        for type in self.target.model_columns.values():
-            counter = f"${countah}"
-            if type == 'ARRAY':
-                counter = f"PARSE_JSON({counter})"
-            if type == 'timestamp':
-                counter = f"TO_TIMESTAMP({counter})"
-            if type == 'date':
-                counter = f"TO_DATE({counter})"
-            counter = f"{counter},"
-            select_str = f"{select_str}{counter}"
-            countah += 1
-        select_str = select_str[:-1]
+            select_str = ''
+            countah = 1
+            for type in self.target.model_columns.values():
+                counter = f"${countah}"
+                if type == 'ARRAY':
+                    counter = f"PARSE_JSON({counter})"
+                if type == 'timestamp':
+                    counter = f"TO_TIMESTAMP({counter})"
+                if type == 'date':
+                    counter = f"TO_DATE({counter})"
+                counter = f"{counter},"
+                select_str = f"{select_str}{counter}"
+                countah += 1
+            select_str = select_str[:-1]
 
-        insert_sql = """INSERT INTO {schema}.{target_table}
-        ({col_string})
-        SELECT {select_str}
-        FROM VALUES {val_string}
-        """.format(
-                    schema = self.check_safe(schema),
-                    target_table = self.check_safe(target_table),
-                    col_string = ','.join([
-                        self.check_safe(field) for field in self.target.model_columns.keys()
-                    ]),
-                    select_str = select_str,
-                    val_string = val_string
-                )
-        self.logger.info(f"Inserting {len(self.target.formatted_data)} rows into {schema}.{target_table}...")
-        self.logger.debug(f"Insert query: {insert_sql}")
-        self.cursor.execute(insert_sql)
-        self.cxn.commit()
-        self.logger.info("Committed insert.")
+            insert_sql = """INSERT INTO {schema}.{target_table}
+            ({col_string})
+            SELECT {select_str}
+            FROM VALUES {val_string}
+            """.format(
+                        schema = self.check_safe(schema),
+                        target_table = self.check_safe(target_table),
+                        col_string = ','.join([
+                            self.check_safe(field) for field in self.target.model_columns.keys()
+                        ]),
+                        select_str = select_str,
+                        val_string = val_string
+                    )
+            self.logger.info(f"Inserting {len(chunk)} rows into {schema}.{target_table}...")
+            # self.logger.debug(f"Insert query: {insert_sql}")
+            self.cursor.execute(insert_sql)
+            self.cxn.commit()
+            self.logger.info("Committed insert.")
 
     def recreate_object(self, target_table, schema, primary_key_list):
         '''Convenience wrapper for drop and create methods.'''
