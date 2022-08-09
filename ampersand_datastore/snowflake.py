@@ -191,7 +191,7 @@ class Snowflake(Database):
 
         if len(self.target.formatted_data) > max_chunk_size:
             for i in range(0, len(self.target.formatted_data), max_chunk_size):
-                chunked_list.append(self.target.formatted_data[i:i+max_chunk_size])
+                chunked_data.append(self.target.formatted_data[i:i+max_chunk_size])
         else:
             chunked_data = self.target.formatted_data
 
