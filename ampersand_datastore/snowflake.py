@@ -263,8 +263,6 @@ class Snowflake(Database):
             countah += 1
         select_str = select_str[:-1]
 
-        if
-
         insert_sql = """INSERT INTO {schema}.{target_table}
         ({col_string})
         SELECT {select_str}
