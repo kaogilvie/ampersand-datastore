@@ -185,7 +185,17 @@ class Snowflake(Database):
         self.create_object(target_table, schema, primary_key_list)
 
         val_string = ''
-        for row in self.target.formatted_data:
+
+        chunked_data = []
+        max_chunk_size = 10000
+
+        if len(self.target.formatted_data) > max_chunk_size:
+            for i in range(0, len(self.target.formatted_date), max_chunk_size):
+                chunked_list.append(self.target.formatted_data[i:i+max_chunk_size])
+        else:
+            chunked_data = self.target.formatted_data
+
+        for row in chunked_data:
             new_row = "("
             for col, typ in self.target.model_columns.items():
                 safe_col = self.check_safe(row[col])
@@ -252,6 +262,8 @@ class Snowflake(Database):
             select_str = f"{select_str}{counter}"
             countah += 1
         select_str = select_str[:-1]
+
+        if
 
         insert_sql = """INSERT INTO {schema}.{target_table}
         ({col_string})
