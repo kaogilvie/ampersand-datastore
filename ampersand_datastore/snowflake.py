@@ -198,7 +198,6 @@ class Snowflake(Database):
         for chunk in chunked_data:
             val_string = ''
             for row in chunk:
-                self.logger.info(row)
                 new_row = "("
                 for col, typ in self.target.model_columns.items():
                     safe_col = self.check_safe(row[col])
