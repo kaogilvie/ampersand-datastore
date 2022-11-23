@@ -104,7 +104,7 @@ class Snowflake(Database):
         self.cxn.commit()
         self.logger.info(f"Table {schema}.{target_table} dropped.")
 
-    def upsert_object(self, target_table, schema, primary_key_list):
+    def upsert_object(self, target_table, schema, primary_key_list, update_existing=True):
         '''Convenience wrapper to perform checks, drops and upserts as needed.'''
         try:
             self.create_object(target_table, schema, primary_key_list)
@@ -117,31 +117,53 @@ class Snowflake(Database):
             self.logger.info("Creating temp table")
             self.append_object(f"{target_table}_temp", schema, primary_key_list)
 
-            ## MERGE INTO instead of ON CONFLICT
-            upsert_sql = """MERGE INTO {schema}.{target_table} as a
-            USING {schema}.{target_table}_temp as b
-            ON {primary_key_expression}
-            WHEN MATCHED THEN UPDATE SET {update_cols}
-            WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})
-            """.format(
-                        schema = self.check_safe(schema),
-                        target_table = self.check_safe(target_table),
-                        col_string = ','.join([
-                            self.check_safe(field) for field in self.target.model_columns.keys()
-                        ]),
-                        primary_key_expression = ','.join([
-                            f"a.{self.check_safe(pk)} = b.{self.check_safe(pk)}" for pk in primary_key_list
-                        ]),
-                        update_cols = ','.join([
-                            "a.{field} = b.{field}".format(field = self.check_safe(field)) for field in self.target.model_columns if field not in primary_key_list
-                        ]),
-                        insert_cols = ",".join([
-                            field for field in self.target.model_columns
-                        ]),
-                        insert_vals = ",".join([
-                            f"b.{field}" for field in self.target.model_columns
-                        ])
-                       )
+
+            if update_existing is True:
+                upsert_sql = """MERGE INTO {schema}.{target_table} as a
+                USING {schema}.{target_table}_temp as b
+                ON {primary_key_expression}
+                WHEN MATCHED THEN UPDATE SET {update_cols}
+                WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})
+                """.format(
+                            schema = self.check_safe(schema),
+                            target_table = self.check_safe(target_table),
+                            col_string = ','.join([
+                                self.check_safe(field) for field in self.target.model_columns.keys()
+                            ]),
+                            primary_key_expression = ','.join([
+                                f"a.{self.check_safe(pk)} = b.{self.check_safe(pk)}" for pk in primary_key_list
+                            ]),
+                            update_cols = ','.join([
+                                "a.{field} = b.{field}".format(field = self.check_safe(field)) for field in self.target.model_columns if field not in primary_key_list
+                            ]),
+                            insert_cols = ",".join([
+                                field for field in self.target.model_columns
+                            ]),
+                            insert_vals = ",".join([
+                                f"b.{field}" for field in self.target.model_columns
+                            ])
+                        )
+            else:
+                upsert_sql = """MERGE INTO {schema}.{target_table} as a
+                USING {schema}.{target_table}_temp as b
+                ON {primary_key_expression}
+                WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})
+                """.format(
+                            schema = self.check_safe(schema),
+                            target_table = self.check_safe(target_table),
+                            col_string = ','.join([
+                                self.check_safe(field) for field in self.target.model_columns.keys()
+                            ]),
+                            primary_key_expression = ','.join([
+                                f"a.{self.check_safe(pk)} = b.{self.check_safe(pk)}" for pk in primary_key_list
+                            ]),
+                            insert_cols = ",".join([
+                                field for field in self.target.model_columns
+                            ]),
+                            insert_vals = ",".join([
+                                f"b.{field}" for field in self.target.model_columns
+                            ])
+                        )                
 
             # self.logger.info("Upserting {len}") # length of rows to upsert
             self.cursor.execute(upsert_sql)
@@ -198,7 +220,6 @@ class Snowflake(Database):
         for chunk in chunked_data:
             val_string = ''
             for row in chunk:
-                self.logger.info(row)
                 new_row = "("
                 for col, typ in self.target.model_columns.items():
                     safe_col = self.check_safe(row[col])
