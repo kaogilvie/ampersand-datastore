@@ -119,7 +119,6 @@ class Snowflake(Database):
 
 
             if update_existing is True:
-                ## MERGE INTO instead of ON CONFLICT
                 upsert_sql = """MERGE INTO {schema}.{target_table} as a
                 USING {schema}.{target_table}_temp as b
                 ON {primary_key_expression}
