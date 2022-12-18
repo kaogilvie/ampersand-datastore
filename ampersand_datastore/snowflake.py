@@ -29,6 +29,14 @@ class Snowflake(Database):
             string = string.replace(';', '')
         return string
 
+    def escape_varchar(self, string):
+        '''
+        Varchar handles most things well except, of course, apostrophes.
+        '''
+        if "'" in string:
+            string = string.replace("'", "\\'")
+        return string
+
     def open_connection(self, creds: dict):
         ''''
         Open connection to snowflake with the following parameters in creds:
@@ -115,8 +123,9 @@ class Snowflake(Database):
 
             ## LOAD TEMP TABLE
             self.logger.info("Creating temp table")
-            self.append_object(f"{target_table}_temp", schema, primary_key_list)
-
+            exc = self.append_object(f"{target_table}_temp", schema, primary_key_list)
+            if exc:
+                raise self.snow.ProgrammingError(f'Bubbling up from append. Exception: {exc}')
 
             if update_existing is True:
                 upsert_sql = """MERGE INTO {schema}.{target_table} as a
@@ -170,8 +179,16 @@ class Snowflake(Database):
             self.cxn.commit()
             self.logger.info("Committed upsert.")
         except self.snow.ProgrammingError as e:
-            self.logger.exception("Something went wrong with the upsert.")
-            self.logger.info(f"Upsert SQL: {upsert_sql}")
+            self.logger.exception("Something went wrong during the upsert routine.")
+            
+            # ugly, but gives us adequate logging if upsert exists
+            try:
+                upsert_sql
+            except UnboundLocalError:
+                upsert_sql = None           
+            if upsert_sql:
+                self.logger.info(f"Upsert SQL: {upsert_sql}")
+            
             if os.environ['SLACK_MONITOR_WEBHOOK']:
                 import requests
                 error_payload = {
@@ -231,6 +248,7 @@ class Snowflake(Database):
                         if safe_col == '':
                             safe_col = 'NULL'
                         else:
+                            safe_col = self.escape_varchar(safe_col)
                             try:
                                 if safe_col[0] != "'":
                                     safe_col = f"'{safe_col}"
@@ -238,7 +256,7 @@ class Snowflake(Database):
                                     safe_col = f"{safe_col}'"
                             except Exception as e:
                                 self.logger.exception(f"Type mismtach for {col} column within {target_table} append.")
-                                raise e
+                                return e
 
                     # you cannot insert a python array directly into snowflake yet
                     # this makes exclusively str arrays
@@ -306,9 +324,12 @@ class Snowflake(Database):
                         val_string = val_string
                     )
             self.logger.info(f"Inserting {len(chunk)} rows into {schema}.{target_table}...")
-            # self.logger.debug(f"Insert query: {insert_sql}")
-            self.cursor.execute(insert_sql)
-            self.cxn.commit()
+            try:
+                self.cursor.execute(insert_sql)
+                self.cxn.commit()
+            except Exception as e:
+                self.logger.exception(f"Something went wrong with the insert. Query: {insert_sql}")
+                return e
             self.logger.info("Committed insert.")
 
     def recreate_object(self, target_table, schema, primary_key_list):
