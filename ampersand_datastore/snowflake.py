@@ -13,7 +13,7 @@ class Snowflake(Database):
         super().__init__()
         self.snow = import_snowflake()
         self.type_conversion_dict = {
-            'text[]': 'ARRAY',
+            'text[]': 'ARRAY'
         }
 
     def check_safe(self, string):
@@ -171,6 +171,7 @@ class Snowflake(Database):
             self.logger.info("Committed upsert.")
         except self.snow.ProgrammingError as e:
             self.logger.exception("Something went wrong with the upsert.")
+            self.logger.info(f"Upsert SQL: {upsert_sql}")
             if os.environ['SLACK_MONITOR_WEBHOOK']:
                 import requests
                 error_payload = {
@@ -230,10 +231,14 @@ class Snowflake(Database):
                         if safe_col == '':
                             safe_col = 'NULL'
                         else:
-                            if safe_col[0] != "'":
-                                safe_col = f"'{safe_col}"
-                            if safe_col[-1] != "'":
-                                safe_col = f"{safe_col}'"
+                            try:
+                                if safe_col[0] != "'":
+                                    safe_col = f"'{safe_col}"
+                                if safe_col[-1] != "'":
+                                    safe_col = f"{safe_col}'"
+                            except Exception as e:
+                                self.logger.exception(f"Type mismtach for {col} column within {target_table} append.")
+                                raise e
 
                     # you cannot insert a python array directly into snowflake yet
                     # this makes exclusively str arrays
