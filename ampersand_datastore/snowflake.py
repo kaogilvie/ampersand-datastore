@@ -32,10 +32,13 @@ class Snowflake(Database):
     
     def check_reserved(self, string):
         '''
-        Specifically to check for reserved field names for snowflake.
+        Specifically to check for field names in Snowflake that raise an "invalid identifier" error.
         Encase them in quotes and you'll be good to go.
+
+        The "product_class" column name runs fine locally & in the Snowflake console but not
+        when you run it on airflow. I don't know why.
         '''
-        if string == 'order':
+        if string in ('order', 'product_class'):
             string = f'"{string}"'
         return string
 
