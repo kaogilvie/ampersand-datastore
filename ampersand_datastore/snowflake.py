@@ -27,6 +27,16 @@ class Snowflake(Database):
         if ';' in string:
             self.logger.warning(f"Removing suspicious semicolon from {string} before insertion.")
             string = string.replace(';', '')
+        string = self.check_reserved(string)
+        return string
+    
+    def check_reserved(self, string):
+        '''
+        Specifically to check for reserved field names for snowflake.
+        Encase them in quotes and you'll be good to go.
+        '''
+        if string == 'order':
+            string = f'"{string}"'
         return string
 
     def escape_varchar(self, string):
@@ -85,6 +95,8 @@ class Snowflake(Database):
             "{col} {type}".format(col = self.check_safe(col), type = self.check_safe(type)) for col, type in self.target.model_columns.items()
         ])
 
+
+
         if len(primary_key_list) > 0:
             columns = "{columns}, PRIMARY KEY ({pk_list})".format(
                 pk_list = (','.join([
@@ -107,7 +119,7 @@ class Snowflake(Database):
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
-        drop_table = "DROP TABLE {schema}.{target_table}".format(schema=self.check_safe(schema),target_table=self.check_safe(target_table))
+        drop_table = "DROP TABLE IF EXISTS {schema}.{target_table}".format(schema=self.check_safe(schema),target_table=self.check_safe(target_table))
         self.cursor.execute(drop_table)
         self.cxn.commit()
         self.logger.info(f"Table {schema}.{target_table} dropped.")
@@ -146,10 +158,10 @@ class Snowflake(Database):
                                 "a.{field} = b.{field}".format(field = self.check_safe(field)) for field in self.target.model_columns if field not in primary_key_list
                             ]),
                             insert_cols = ",".join([
-                                field for field in self.target.model_columns
+                                self.check_reserved(field) for field in self.target.model_columns
                             ]),
                             insert_vals = ",".join([
-                                f"b.{field}" for field in self.target.model_columns
+                                f'b.{self.check_reserved(field)}' for field in self.target.model_columns
                             ])
                         )
             else:
