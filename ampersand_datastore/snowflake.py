@@ -88,14 +88,14 @@ class Snowflake(Database):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
         if len(self.type_conversion_dict) > 0:
-            for col, type in self.target.model_columns.items():
-                converted_type = self.type_conversion_dict.get(type, None)
+            for col, typ in self.target.model_columns.items():
+                converted_type = self.type_conversion_dict.get(typ, None)
                 if converted_type is not None:
-                    self.logger.info(f"Debugging: converting {type} to {converted_type}")
+                    self.logger.info(f"Debugging: converting {typ} to {converted_type}")
                     self.target.model_columns[col] = converted_type
 
         columns = ",".join([
-            "{col} {type}".format(col = self.check_safe(col), type = self.check_safe(type)) for col, type in self.target.model_columns.items()
+            "{col} {typ}".format(col = self.check_safe(col), typ = self.check_safe(typ)) for col, typ in self.target.model_columns.items()
         ])
 
 
@@ -262,6 +262,9 @@ class Snowflake(Database):
                             safe_col = 'NULL'
                         if safe_col == '':
                             safe_col = 'NULL'
+                        if type(safe_col) != str:
+                            self.logger.exception(f"{type(safe_col)} detected in varchar column -- column name is: {col}")
+                            raise Exception(f"Type exception ({type(safe_col)}) in varchar upsert for column {col}.")
                         else:
                             safe_col = self.escape_varchar(safe_col)
                             try:
@@ -312,13 +315,13 @@ class Snowflake(Database):
 
             select_str = ''
             countah = 1
-            for type in self.target.model_columns.values():
+            for typ in self.target.model_columns.values():
                 counter = f"${countah}"
-                if type == 'ARRAY':
+                if typ == 'ARRAY':
                     counter = f"PARSE_JSON({counter})"
-                if type == 'timestamp':
+                if typ == 'timestamp':
                     counter = f"TO_TIMESTAMP({counter})"
-                if type == 'date':
+                if typ == 'date':
                     counter = f"TO_DATE({counter})"
                 counter = f"{counter},"
                 select_str = f"{select_str}{counter}"
