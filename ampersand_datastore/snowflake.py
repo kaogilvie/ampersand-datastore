@@ -272,6 +272,8 @@ class Snowflake(Database):
                                     safe_col = f"'{safe_col}"
                                 if safe_col[-1] != "'":
                                     safe_col = f"{safe_col}'"
+                                if safe_col[-1] == "'" and safe_col[-2] == "\\":
+                                    safe_col = f"{safe_col}'"
                             except Exception as e:
                                 self.logger.exception(f"Type mismtach for {col} column within {target_table} append.")
                                 return e
@@ -296,8 +298,14 @@ class Snowflake(Database):
                     if typ == 'date':
                         if safe_col is None:
                             safe_col = 'NULL'
+                        elif safe_col == '':
+                            safe_col = 'NULL'
                         else:
                             safe_col = f"'{safe_col}'"
+
+                    if typ == 'int':
+                        if safe_col == '':
+                            safe_col = None
 
                     if safe_col is None:
                         safe_col = 'NULL'
