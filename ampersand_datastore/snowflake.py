@@ -281,7 +281,7 @@ class Snowflake(Database):
                     # you cannot insert a python array directly into snowflake yet
                     # this makes exclusively str arrays
                     if typ == 'ARRAY':
-                        safe_col = self.check_safe(f"{str(row[col])}").replace("'", '"')
+                        safe_col = self.check_safe(f"{str(row[col])}").replace("'", "\\'")
                         if safe_col is None:
                             safe_col = 'NULL'
                         elif safe_col == 'None':
