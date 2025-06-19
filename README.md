@@ -2,6 +2,4 @@
 &amp;KO upload interface to any arbitrary amount of datastores
 
 ### Python Version
-Until [this PR](https://github.com/snowflakedb/snowflake-connector-python/pull/1294) has been merged, we are stuck on python 3.10.x
-for this repo. The snowflake-connector-python cannot be built without the
-python 3.11 wheels being published (fails at pyarrow).
+Supports Python 3.9 to 3.13 as of 6/19/2025.
