@@ -1,4 +1,4 @@
-__version__ = "0.4.2"
+__version__ = "0.5.4"
 
 from ampersand_datastore.postgres import Postgres
 from ampersand_datastore.snowflake import Snowflake
