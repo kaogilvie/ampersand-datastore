@@ -63,8 +63,8 @@ class Snowflake(Database):
         Schema is not set in the connection string to allow for maximum flexibility
         in SQL operations down the line.
         '''
-        if not set(['user', 'password', 'account', 'database', 'warehouse']).issubset(set(creds.keys())):
-            raise AttributeError("Required basic params for Snowflake connection not included in creds dict (user, password, account).")
+        if not set(['user', 'account', 'database', 'warehouse']).issubset(set(creds.keys())):
+            raise AttributeError("Required basic params for Snowflake connection not included in creds dict (user, account, database, warehouse).")
         self.cxn = self.snow.connect(**creds)
         self.logger.info(f"Set up connection to {creds['account']} Snowflake instance successfully.")
 
