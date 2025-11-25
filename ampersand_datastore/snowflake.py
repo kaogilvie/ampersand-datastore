@@ -262,6 +262,9 @@ class Snowflake(Database):
                             safe_col = 'NULL'
                         if safe_col == '':
                             safe_col = 'NULL'
+                        if type(safe_col) == int:
+                            self.logger.warning(f"Integer {safe_col} detected in varchar column -- brute force converting to string.")
+                            safe_col = str(safe_col)
                         if type(safe_col) != str:
                             self.logger.exception(f"{type(safe_col)} detected in varchar column -- column name is: {col}")
                             raise Exception(f"Type exception ({type(safe_col)}) in varchar upsert for column {col}.")
